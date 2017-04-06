@@ -6,7 +6,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "fauzan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fauzandotme/encode-ffmpeg.git"
+  },
+  "author": "fauzandotme <muhammadfauzan@live.com>",
   "license": "ISC",
   "dependencies": {
     "ffmpeg": "0.0.4",
