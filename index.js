@@ -39,13 +39,12 @@ function encode(opt = {}) {
         if(scale) vf.push(`scale=${scale}`);
         if(logo) vf.push(`ass=${logo}`);
         if(vf.length > 0) video.addCommand('-vf', `'${vf.join(', ')}'`);
-        if(preset)
         if(preset) video.addCommand('-preset', preset);
         if(crf) video.addCommand('-crf', crf);
         if(overwrite) video.addCommand('-y', '')
 
         video.save(output, function (error, file) {
-    			if(error) reject(error);
+    			if(error) reject(parseError(error));
     			resolve(file);
     		});
       }, function (err) {
@@ -75,4 +74,13 @@ function getSS(input, output) {
       reject(e);
     }
   })
+}
+
+function parseError(err) {
+  try {
+    err = err.message.trim().split('\n');
+    return {message: err[err.length -1]};
+  } catch (e) {
+    return err;
+  }
 }
