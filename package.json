@@ -13,7 +13,7 @@
   "author": "fauzandotme <muhammadfauzan@live.com>",
   "license": "ISC",
   "dependencies": {
-    "ffmpeg": "0.0.4",
-    "mediainfo-parser": "^1.1.5"
+    "mediainfo-parser": "^1.1.5",
+    "shell-escape": "^0.2.0"
   }
 }
