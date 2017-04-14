@@ -38,7 +38,7 @@ function encode(opt = {}) {
     if(codec) Array.prototype.push.apply(command, ['-c:v', codec]);
     if(format) Array.prototype.push.apply(command, ['-f', format]);
     let vf = [];
-    if(subtitle) vf.push(`subtitles=${subtitle}`);
+    if(subtitle) vf.push(`subtitles=${subtitle.replace(/(\W)/g, "\\$1")}`);
     if(scale) vf.push(`scale=${scale}`);
     if(logo) vf.push(`ass=${logo}`);
     if(vf.length > 0) Array.prototype.push.apply(command, ['-vf', vf.join(', ')]);
@@ -48,6 +48,7 @@ function encode(opt = {}) {
     if(faststart) Array.prototype.push.apply(command, ['-movflags', 'faststart']);
     command.push(output);
     command = shellescape(command);
+    console.log(command);
     exec(command,{maxBuffer: 1024 * 5000}, (err, res) => {
       if(err) reject(parseError(err));
       resolve({fileName: path.basename(output), filePath: output});
