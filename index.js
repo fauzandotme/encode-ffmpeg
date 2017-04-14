@@ -48,7 +48,6 @@ function encode(opt = {}) {
     if(faststart) Array.prototype.push.apply(command, ['-movflags', 'faststart']);
     command.push(output);
     command = shellescape(command);
-    console.log(command);
     exec(command,{maxBuffer: 1024 * 5000}, (err, res) => {
       if(err) reject(parseError(err));
       resolve({fileName: path.basename(output), filePath: output});
