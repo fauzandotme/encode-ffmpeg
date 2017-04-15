@@ -14,6 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "mediainfo-parser": "^1.1.5",
+    "mime-types": "^2.1.15",
     "shell-escape": "^0.2.0"
   }
 }

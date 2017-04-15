@@ -2,6 +2,7 @@ const mediainfoParser = require("mediainfo-parser").parse;
 const exec = require('child_process').exec;
 const shellescape = require('shell-escape');
 const path = require('path');
+const mime = require('mime-types')
 
 module.exports = {getSS, encode, info, getSub};
 
@@ -60,6 +61,7 @@ function encode(opt = {}) {
 function getSS(input, output, time = false) {
   if(!time) time = '00:01:00';
   return new Promise((resolve, reject) => {
+    if(!/video/g.test(mime.lookup(input))) reject({message: 'Not a video file!'});
     let command = ['ffmpeg', '-ss',time,'-i',input,'-vframes','1','-vcodec','png','-an','-y', output];
     command = shellescape(command);
     exec(command,{maxBuffer: 1024 * 5000}, (err, res) => {
