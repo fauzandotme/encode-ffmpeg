@@ -3,8 +3,9 @@ const exec = require('child_process').exec;
 const shellescape = require('shell-escape');
 const path = require('path');
 const mime = require('mime-types')
+const fs = require('fs');
 
-module.exports = {getSS, encode, info, getSub};
+module.exports = {getSS, encode, info, getSub, split};
 
 function info(videoPath) {
   return new Promise((resolve, reject) => {
@@ -18,6 +19,13 @@ function info(videoPath) {
         });
     })
   });
+}
+
+async function split(opt = {}) {
+  fs.chmodSync('./split.sh', "755");
+  let command = `./split.sh '${opt.input}' ${opt.size} '-vcodec copy -acodec copy'`;
+  let done = await myExec(command);
+  return done.trim().split('\n');;
 }
 
 function encode(opt = {}) {
@@ -90,4 +98,13 @@ function parseError(err) {
   } catch (e) {
     return err;
   }
+}
+
+function myExec(cmd) {
+  return new Promise((resolve,reject) => {
+    exec(cmd,{maxBuffer: 1024 * 5000}, (err, res) => {
+      if(err) reject(parseError(err));
+      resolve(res);
+    })
+  })
 }
