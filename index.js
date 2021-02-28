@@ -22,8 +22,8 @@ function info(videoPath) {
 }
 
 async function split(opt = {}) {
-  fs.chmodSync('./split.sh', "755");
-  let command = `./split.sh '${opt.input}' ${opt.size} '-vcodec copy -acodec copy'`;
+  fs.chmodSync(__dirname + '/split.sh', "755");
+  let command = __dirname + `/split.sh '${opt.input}' ${opt.size} '-vcodec copy -acodec copy'`;
   let done = await myExec(command);
   return done.trim().split('\n');;
 }
