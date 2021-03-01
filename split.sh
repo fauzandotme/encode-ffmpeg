@@ -33,10 +33,6 @@ EXTENSION="mp4"
 
 # Number of the current video part
 i=1
-while [ ${#i} -ne 3 ];
- do
-   i="0"$i
- done
 
 
 # Filename of the next video part
@@ -57,10 +53,6 @@ while [[ $CUR_DURATION -lt $DURATION ]]; do
     CUR_DURATION=$((CUR_DURATION + NEW_DURATION))
 
     i=$((i + 1))
-    while [ ${#i} -ne 3 ];
-	 do
-	   i="0"$i
-	 done
 
     # echo "Duration of $NEXTFILENAME: $NEW_DURATION"
     # echo "Part No. $i starts at $CUR_DURATION"
