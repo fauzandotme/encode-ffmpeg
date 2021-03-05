@@ -22,10 +22,17 @@ function info(videoPath) {
 }
 
 async function split(opt = {}) {
-  fs.chmodSync(__dirname + '/split.sh', "755");
-  let command = __dirname + `/split.sh '${opt.input}' ${opt.size} '-vcodec copy -acodec copy'`;
+  let output = opt.input.substr(0, opt.input.lastIndexOf(".")) + "-part.mkv";
+  let command =  `mkvmerge --output '${output}' '(' '${opt.input}' ')' --split size:${opt.size}`;
   let done = await myExec(command);
-  return done.trim().split('\n');;
+  return parse(done);
+  function parse(str) {
+    str = str.match(/The file+.+/g);
+    return str.map((el) => {
+      el = el.match(/\'+.+\'/)[0]
+      return el.replace(/\'/g, '');
+    })
+  }
 }
 
 function encode(opt = {}) {
