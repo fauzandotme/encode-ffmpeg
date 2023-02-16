@@ -4,8 +4,8 @@ const shellescape = require('shell-escape');
 const path = require('path');
 const mime = require('mime-types')
 const fs = require('fs');
-
-module.exports = {getSS, encode, info, getSub, split};
+const { spawn } = require('child_process');
+const EventEmitter = require('events');
 
 function info(videoPath) {
   return new Promise((resolve, reject) => {
@@ -35,39 +35,133 @@ async function split(opt = {}) {
   }
 }
 
-function encode(opt = {}) {
+
+class Encoder extends EventEmitter {
+  async encode({ input, output, subtitle = '', audio = '', codec = 'libx264', crf = 30, scale = false, logo = false, preset = false, overwrite = false, format = 'mp4', faststart = false }) {
+    let vfFilters = [];
+    if (scale) vfFilters.push(`scale=${scale}`);
+    if (subtitle) vfFilters.push(`subtitles=${subtitle.replace(/(\W)/g, "\\$1")}`);
+    if (logo) vfFilters.push(`ass=${logo}`);
+
+    const command = [
+      'ffmpeg', '-y', '-i', input, ...(audio ? ['-i', audio] : []), '-c:v', codec, '-crf', crf,
+      ...(audio ? ['-c:a', 'copy'] : []), '-f', format,
+      ...(vfFilters.length ? ['-vf', vfFilters.join(',')] : []),
+      ...(preset ? ['-preset', preset] : []),
+      ...(faststart ? ['-movflags', 'faststart'] : []),
+      ...(overwrite ? ['-y'] : []),
+      output,
+    ];
+
+    const durationRegex = /Duration: (\d{2}):(\d{2}):(\d{2})/;
+    const progressRegex = /time=(\d{2}):(\d{2}):(\d{2})/;
+    let duration = 0;
+    let lastProgress = 0;
+    return new Promise((resolve, reject) => {
+      // console.log(command)
+      const ffmpeg = spawn(command[0], command.slice(1));
+
+      ffmpeg.stderr.on('data', (data) => {
+        const message = data.toString();
+        // console.log(message)
+        const durationMatch = message.match(durationRegex);
+        const progressMatch = message.match(progressRegex);
+        if (durationMatch) {
+          duration = parseInt(durationMatch[1]) * 3600 + parseInt(durationMatch[2]) * 60 + parseInt(durationMatch[3]);
+        }
+        if (progressMatch) {
+          const progress = parseInt(progressMatch[1]) * 3600 + parseInt(progressMatch[2]) * 60 + parseInt(progressMatch[3]);
+          if (progress > lastProgress) {
+            const percent = Math.round(progress / duration * 100);
+            const fileSize = fs.statSync(output).size;
+            this.emit('progress', {percent, fileSize});
+            lastProgress = progress;
+          }
+        }
+      });
+
+      ffmpeg.on('error', (err) => {
+        reject({ error: err });
+      });
+
+      ffmpeg.on('exit', (code, signal) => {
+        if (code === 0) {
+          const fileSize = fs.statSync(output).size;
+          resolve({ fileName: path.basename(output), filePath: output, fileSize });
+        } else {
+          reject({ error: new Error(`ffmpeg exited with code ${code} and signal ${signal}`) });
+        }
+      });
+    });
+  }
+}
+
+async function encode({ input, output, subtitle = '', codec = 'libx264', crf = 30, scale = false, logo = false, preset = false, overwrite = false, format = 'mp4', faststart = false }) {
+  const logoFilter = logo && typeof logo === 'string' ?
+    /^[a-zA-Z0-9.]{1,20}$/.test(logo) ?
+      `drawtext=text='${logo}':fontcolor=white:fontsize=24:x=10:y=10:enable='between(mod(t,60),0,10)'` :
+      `overlay=10:10:enable='between(mod(t,60),0,10)'` :
+    logo && typeof logo !== 'string' ?
+      `overlay=10:10:enable='between(mod(t,60),0,10)'` :
+    '';
+
+  const vfFilters = [
+    ...(logoFilter ? ['-vf', logoFilter] : []),
+    ...(scale ? ['-vf', `scale=${scale}`] : []),
+    ...(subtitle ? ['-vf', `subtitles=${subtitle.replace(/(\W)/g, "\\$1")}`] : []),
+  ];
+
+  const filterComplex = logo && typeof logo === 'string' && !/^[a-zA-Z0-9.]{1,20}$/.test(logo) ?
+    ['-i', logo, '-filter_complex', logoFilter] :
+    [];
+
+  const command = [
+    'ffmpeg', '-y', '-i', input, '-c:v', codec, '-crf', crf, '-f', format,
+    ...filterComplex,
+    ...vfFilters,
+    ...(preset ? ['-preset', preset] : []),
+    ...(faststart ? ['-movflags', 'faststart'] : []),
+    ...(overwrite ? ['-y'] : []),
+    output,
+  ];
+
+  const durationRegex = /Duration: (\d{2}):(\d{2}):(\d{2})/;
+  const progressRegex = /time=(\d{2}):(\d{2}):(\d{2})/;
+  let duration = 0;
+  let lastProgress = 0;
+
   return new Promise((resolve, reject) => {
-    let input = opt.input ? opt.input : reject({message: 'empty input file'});
-    let output = opt.output ? opt.output : reject({message: 'empty output file'});
-    let subtitle = opt.subtitle ? opt.subtitle : '';
-    let codec = opt.codec ? opt.codec : 'libx264';
-    let crf = opt.crf ? opt.crf : '30';
-    let scale = opt.scale ? opt.scale : false;
-    let logo = opt.logo ? opt.logo : false;
-    let preset = opt.preset ? opt.preset : false;
-    let overwrite = opt.overwrite ? opt.overwrite : false;
-    let format = opt.format ? opt.format : 'mp4';
-    let faststart = opt.faststart ? opt.faststart : false;
+    const ffmpeg = spawn(command[0], command.slice(1));
 
+    ffmpeg.stderr.on('data', (data) => {
+      const message = data.toString();
+      const durationMatch = message.match(durationRegex);
+      const progressMatch = message.match(progressRegex);
+      if (durationMatch) {
+        duration = parseInt(durationMatch[1]) * 3600 + parseInt(durationMatch[2]) * 60 + parseInt(durationMatch[3]);
+      }
+      if (progressMatch) {
+        const progress = parseInt(progressMatch[1]) * 3600 + parseInt(progressMatch[2]) * 60 + parseInt(progressMatch[3]);
+        if (progress > lastProgress) {
+          const percent = Math.round(progress / duration * 100);
+          console.log(`Encoding progress: ${percent}%`);
+          lastProgress = progress;
+        }
+      }
+    });
 
-    let command = ['ffmpeg', '-i', input];
-    if(codec) Array.prototype.push.apply(command, ['-c:v', codec]);
-    if(format) Array.prototype.push.apply(command, ['-f', format]);
-    let vf = [];
-    if(subtitle) vf.push(`subtitles=${subtitle.replace(/(\W)/g, "\\$1")}`);
-    if(scale) vf.push(`scale=${scale}`);
-    if(logo) vf.push(`ass=${logo}`);
-    if(vf.length > 0) Array.prototype.push.apply(command, ['-vf', vf.join(', ')]);
-    if(preset) Array.prototype.push.apply(command, ['-preset', preset]);
-    if(crf) Array.prototype.push.apply(command, ['-crf', crf]);
-    if(overwrite) command.push('-y');
-    if(faststart) Array.prototype.push.apply(command, ['-movflags', 'faststart']);
-    command.push(output);
-    command = shellescape(command);
-    exec(command,{maxBuffer: 1024 * 5000}, (err, res) => {
-      if(err) reject(parseError(err));
-      resolve({fileName: path.basename(output), filePath: output});
-    })
+    ffmpeg.on('error', (err) => {
+      reject({ error: err });
+    });
+
+    ffmpeg.on('exit', (code, signal) => {
+      if (code === 0) {
+        const fileSize = fs.statSync(output).size;
+        resolve({ fileName: path.basename(output), filePath: output, fileSize });
+      } else {
+        reject({ error: new Error(`ffmpeg exited with code ${code} and signal ${signal}`) });
+      }
+    });
   });
 }
 
@@ -115,3 +209,6 @@ function myExec(cmd) {
     })
   })
 }
+
+
+module.exports = {getSS, encode, Encoder, info, getSub, split};
