@@ -1,5 +1,5 @@
 const mediainfoParser = require("mediainfo-parser").parse;
-const exec = require('child_process').exec;
+const { exec } = require('child_process');
 const shellescape = require('shell-escape');
 const path = require('path');
 const mime = require('mime-types')
@@ -37,6 +37,11 @@ async function split(opt = {}) {
 
 
 class Encoder extends EventEmitter {
+  constructor() {
+    super();
+    this.spawnID = null;
+  }
+
   async encode({ input, output, subtitle = '', audio = '', codec = 'libx264', crf = 30, scale = false, logo = false, preset = false, overwrite = false, format = 'mp4', faststart = false }) {
     let vfFilters = [];
     if (scale) vfFilters.push(`scale=${scale}`);
@@ -58,8 +63,12 @@ class Encoder extends EventEmitter {
     let duration = 0;
     let lastProgress = 0;
     return new Promise((resolve, reject) => {
-      // console.log(command)
+      // console.log(command[0], command.slice(1))
+      // console.log('do encodings');
       const ffmpeg = spawn(command[0], command.slice(1));
+      // console.log(ffmpeg.pid)
+      this.spawnID = ffmpeg.pid;
+
 
       ffmpeg.stderr.on('data', (data) => {
         const message = data.toString();
@@ -73,7 +82,12 @@ class Encoder extends EventEmitter {
           const progress = parseInt(progressMatch[1]) * 3600 + parseInt(progressMatch[2]) * 60 + parseInt(progressMatch[3]);
           if (progress > lastProgress) {
             const percent = Math.round(progress / duration * 100);
-            const fileSize = fs.statSync(output).size;
+            let fileSize = 0;
+            try {
+              fileSize = fs.statSync(output).size;
+            } catch(e) {
+
+            }
             this.emit('progress', {percent, fileSize});
             lastProgress = progress;
           }
@@ -81,18 +95,39 @@ class Encoder extends EventEmitter {
       });
 
       ffmpeg.on('error', (err) => {
-        reject({ error: err });
+        // console.log(err)
+        this.emit('error', err);
+        // reject(err);
       });
 
       ffmpeg.on('exit', (code, signal) => {
         if (code === 0) {
           const fileSize = fs.statSync(output).size;
-          resolve({ fileName: path.basename(output), filePath: output, fileSize });
+          const data = { fileName: path.basename(output), filePath: output, fileSize };
+          this.emit('success', data);
+          resolve(data);
         } else {
-          reject({ error: new Error(`ffmpeg exited with code ${code} and signal ${signal}`) });
+          this.emit('error', {message: `ffmpeg exited with code ${code} and signal ${signal}`});
+          // reject({ error: new Error(`ffmpeg exited with code ${code} and signal ${signal}`) });
         }
       });
     });
+  }
+  stop() {
+    if (this.spawnID) {
+      try {
+        exec(`kill -9 ${this.spawnID}`, (err, stdout, stderr) => {
+          if (err) {
+            // console.error(`Error stopping ffmpeg process with ID ${this.spawnID}:`, err);
+          } else {
+            // console.log(`Stopped ffmpeg process with ID ${this.spawnID}`);
+          }
+        });
+        this.spawnID = null;
+      } catch(e) {
+        // console.error(`Error stopping ffmpeg process with ID ${this.spawnID}:`, e);
+      }
+    }
   }
 }
 
@@ -151,7 +186,7 @@ async function encode({ input, output, subtitle = '', codec = 'libx264', crf = 3
     });
 
     ffmpeg.on('error', (err) => {
-      reject({ error: err });
+      reject(err)
     });
 
     ffmpeg.on('exit', (code, signal) => {
