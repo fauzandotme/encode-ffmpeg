@@ -42,12 +42,16 @@ class Encoder extends EventEmitter {
     this.spawnID = null;
   }
 
-  async encode({ input, output, subtitle = '', audio = '', codec = 'libx264', crf = 30, scale = false, logo = false, preset = false, overwrite = false, format = 'mp4', faststart = false }) {
+  async encode({ input, output, subtitle = '', audio = '', codec = 'libx264', crf = 30, scale = false, logo = false, watermark = false, preset = false, overwrite = false, format = 'mp4', faststart = false }) {
+    const fontPath = path.join(__dirname, 'font.ttf');
     let vfFilters = [];
     if (scale) vfFilters.push(`scale=${scale}`);
     if (subtitle) vfFilters.push(`subtitles=${subtitle.replace(/(\W)/g, "\\$1")}`);
     if (logo) vfFilters.push(`ass=${logo}`);
-
+    if (watermark) {
+      vfFilters.push(`drawtext=text='${watermark}': fontfile='${fontPath}':fontsize=24:fontcolor=white:x=10:y=10:enable='lt(mod(t,60),5)'`);
+    }
+  
     const command = [
       'ffmpeg', '-y', '-i', input, ...(audio ? ['-i', audio] : []), '-c:v', codec, '-crf', crf,
       ...(audio ? ['-c:a', 'copy'] : []), '-f', format,
@@ -57,6 +61,8 @@ class Encoder extends EventEmitter {
       ...(overwrite ? ['-y'] : []),
       output,
     ];
+
+    console.log(command.join(' '));
 
     const durationRegex = /Duration: (\d{2}):(\d{2}):(\d{2})/;
     const progressRegex = /time=(\d{2}):(\d{2}):(\d{2})/;
@@ -134,7 +140,7 @@ class Encoder extends EventEmitter {
 async function encode({ input, output, subtitle = '', codec = 'libx264', crf = 30, scale = false, logo = false, preset = false, overwrite = false, format = 'mp4', faststart = false }) {
   const logoFilter = logo && typeof logo === 'string' ?
     /^[a-zA-Z0-9.]{1,20}$/.test(logo) ?
-      `drawtext=text='${logo}':fontcolor=white:fontsize=24:x=10:y=10:enable='between(mod(t,60),0,10)'` :
+      `drawtext=text='${logo}':fontcolor=white:fontsize=24:x=10:y=10:enable='between(mod(t,60),0,10)':setdar=${scale}` :
       `overlay=10:10:enable='between(mod(t,60),0,10)'` :
     logo && typeof logo !== 'string' ?
       `overlay=10:10:enable='between(mod(t,60),0,10)'` :
@@ -245,5 +251,83 @@ function myExec(cmd) {
   })
 }
 
+class Curl extends EventEmitter {
+  constructor() {
+    super();
+    this.curlProcess = null;
+  }
 
-module.exports = {getSS, encode, Encoder, info, getSub, split};
+  async makeRequest({ url, method = 'GET', data = null, headers = {}, output = '' }) {
+    const curlCommand = ['curl', '-X', method.toUpperCase(), '-H', 'Content-Type: application/json', ...Object.entries(headers).map(([key, value]) => `-H "${key}: ${value}"`)];
+    if (data) {
+      curlCommand.push('-d', JSON.stringify(data));
+    }
+    if (output) {
+      curlCommand.push('-o', output);
+    }
+    if (method.toUpperCase() === 'GET') {
+      curlCommand.push('--progress-bar');
+    }
+    console.log('Executing curl command:', curlCommand.join(' '));
+
+    return new Promise((resolve, reject) => {
+      const curl = spawn(curlCommand[0], curlCommand.slice(1));
+      this.curlProcess = curl;
+
+      let totalBytes = 0;
+      let uploadedBytes = 0;
+
+      curl.stderr.on('data', (data) => {
+        const message = data.toString();
+        if (method.toUpperCase() === 'GET') {
+          const match = message.match(/(\d+)%\s+/);
+          if (match) {
+            const percent = parseInt(match[1]);
+            this.emit('progress', { percent });
+          }
+        } else {
+          const match = message.match(/(\d+)\/(\d+)/);
+          if (match) {
+            uploadedBytes = parseInt(match[1]);
+            totalBytes = parseInt(match[2]);
+            const percent = Math.round(uploadedBytes / totalBytes * 100);
+            this.emit('progress', { percent, uploadedBytes, totalBytes });
+          }
+        }
+      });
+
+      curl.on('exit', (code, signal) => {
+        if (code === 0) {
+          if (output) {
+            const data = { fileName: path.basename(output), filePath: output };
+            this.emit('success', data);
+            resolve(data);
+          } else {
+            this.emit('success');
+            resolve();
+          }
+        } else {
+          this.emit('error', { message: `curl exited with code ${code} and signal ${signal}` });
+          reject({ error: new Error(`curl exited with code ${code} and signal ${signal}`) });
+        }
+      });
+    });
+  }
+
+  stop() {
+    if (this.curlProcess) {
+      const pid = this.curlProcess.pid;
+      exec(`kill -9 ${pid}`, (error, stdout, stderr) => {
+        if (error) {
+          this.emit('error', { message: error.toString() });
+        } else {
+          this.emit('success', { message: `Stopped curl process with ID ${pid}` });
+        }
+      });
+      this.curlProcess = null;
+    }
+  }
+}
+
+
+module.exports = {getSS, encode, Encoder, info, getSub, split, Curl};
