@@ -62,7 +62,7 @@ class Encoder extends EventEmitter {
       output,
     ];
 
-    console.log(command.join(' '));
+    // console.log(command.join(' '));
 
     const durationRegex = /Duration: (\d{2}):(\d{2}):(\d{2})/;
     const progressRegex = /time=(\d{2}):(\d{2}):(\d{2})/;
