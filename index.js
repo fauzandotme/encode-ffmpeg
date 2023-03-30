@@ -53,12 +53,13 @@ class Encoder extends EventEmitter {
     }
   
     const command = [
-      'ffmpeg', '-y', '-i', input, ...(audio ? ['-i', audio] : []), '-c:v', codec, '-crf', crf,
-      ...(audio ? ['-c:a', 'copy'] : []), '-f', format,
+      'ffmpeg', '-y', '-i', input, ...(audio ? ['-i', audio] : []), '-c:v', codec, '-c:a', 'aac', '-strict', '-2', '-crf', crf,
+      ...(audio ? ['-c:a', 'aac'] : []), '-f', format,
       ...(vfFilters.length ? ['-vf', vfFilters.join(',')] : []),
       ...(preset ? ['-preset', preset] : []),
       ...(faststart ? ['-movflags', 'faststart'] : []),
       ...(overwrite ? ['-y'] : []),
+      ...(codec === 'h264_videotoolbox' ? ['-b:v', '3000k'] : []),
       output,
     ];
 
